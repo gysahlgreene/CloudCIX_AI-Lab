@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+# Export module function if present
+[[ $(type -t module) == "function" ]] && export -f module
+
+# Find available port helper provided by OnDemand templates
+port=$(find_port)
+
+# Export the port for use in script.sh.erb
+export port
+
+# Ensure the job's rendered script is executable.
+if [ -f "${PWD}/script.sh" ] && [ ! -x "${PWD}/script.sh" ]; then
+	chmod +x "${PWD}/script.sh" || true
+fi

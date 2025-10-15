@@ -1,0 +1,9 @@
+---
+name: CloudCIX AI Lab
+category: Interactive Apps
+subcategory: AI & Machine Learning
+role: batch_connect
+description: |
+  Launch CloudCIX AI Lab for running large language models with a user-friendly interface. All data persists in your home directory under ~/cloudcix_ai_lab/
+tile:
+  sub_caption: ""

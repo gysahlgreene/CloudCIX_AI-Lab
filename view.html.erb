@@ -1,0 +1,14 @@
+<% if defined?(host) && defined?(port) && !host.to_s.empty? && !port.to_s.empty? %>
+<a href="/node/<%= host %>/<%= port %>/" target="_blank" class="btn btn-primary">
+  <i class="fa fa-external-link"></i> Connect to Text Generation WebUI
+  </a>
+<% else %>
+<div class="alert alert-warning">
+  <p>Connection information not available yet. Debug info:</p>
+  <ul>
+    <li>Host: <%= defined?(host) ? host.inspect : 'undefined' %></li>
+    <li>Port: <%= defined?(port) ? port.inspect : 'undefined' %></li>
+  </ul>
+  <p>Please wait for the job to fully start, then refresh this page.</p>
+</div>
+<% end %>

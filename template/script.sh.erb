@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+
+echo "TIMING - Starting main script at: $(date)"
+
+# Ensure HOME is set (fallback to getent if not set)
+if [ -z "${HOME}" ]; then
+  HOME="$(getent passwd "$(id -u)" | cut -d: -f6)"
+  export HOME
+fi
+
+# Validate HOME directory exists
+if [ ! -d "${HOME}" ]; then
+  echo "ERROR: HOME directory ${HOME} does not exist" >&2
+  exit 1
+fi
+
+# Use fixed paths - no user customization
+IMG="/opt/spack/text-generation-webui.sif"
+MODEL_DIR="${HOME}/cloudcix_ai_lab/models"
+
+echo "HOME directory: ${HOME}"
+echo "Using fixed image: ${IMG}"
+echo "Using fixed model directory: ${MODEL_DIR}"
+echo "Creating CloudCIX AI Lab structure..."
+
+# Create the full cloudcix_ai_lab directory structure
+mkdir -p \
+    "${HOME}/cloudcix_ai_lab/cache/gradio" \
+    "${HOME}/cloudcix_ai_lab/logs/notebook" \
+    "${HOME}/cloudcix_ai_lab/logs/instruct" \
+    "${HOME}/cloudcix_ai_lab/logs/chat" \
+    "${MODEL_DIR}" \
+    "${HOME}/cloudcix_ai_lab/loras" \
+    "${HOME}/cloudcix_ai_lab/characters" \
+    "${HOME}/cloudcix_ai_lab/presets" \
+    "${HOME}/cloudcix_ai_lab/mmproj" \
+    "${HOME}/cloudcix_ai_lab/grammars" \
+    "${HOME}/cloudcix_ai_lab/instruction-templates" \
+    "${HOME}/cloudcix_ai_lab/extensions" \
+    "${HOME}/cloudcix_ai_lab/training/datasets" \
+    "${HOME}/cloudcix_ai_lab/training/formats" \
+    "${HOME}/cloudcix_ai_lab/settings"
+
+echo "CloudCIX AI Lab directory structure created at: ${HOME}/cloudcix_ai_lab"
+
+# Capture the original job working directory before changing dirs
+JOBDIR="${PWD}"
+
+cd "${HOME}" || exit 1
+echo "Changed to HOME directory: ${HOME}"
+echo "Current directory: $(pwd)"
+
+# Determine apptainer/singularity binary
+if command -v apptainer >/dev/null 2>&1; then
+  SINGULARITY_BIN=apptainer
+elif command -v singularity >/dev/null 2>&1; then
+  SINGULARITY_BIN=singularity
+else
+  echo "Neither apptainer nor singularity found on PATH" >&2
+  exit 1
+fi
+
+# Check if image exists, if not exit with clear error
+if [ ! -f "${IMG}" ]; then
+  echo "ERROR: Image not found at: ${IMG}" >&2
+  echo "Please ensure the image exists or build it manually:" >&2
+  echo "  cd /opt/spack" >&2
+  echo "  apptainer build text-generation-webui.sif /var/www/ood/apps/dev/eoin/gateway/text-generation-webui/text-generation-webui.def" >&2
+  exit 1
+fi
+
+if [ -z "${port}" ]; then
+  echo "ERROR: Port not allocated by before.sh.erb" >&2
+  exit 1
+fi
+echo "Using port: ${port}"
+
+echo "DEBUG: host=${SLURM_NODELIST:-$HOSTNAME}"
+echo "DEBUG: port=${port}"
+
+# Write connection.yml where OnDemand expects it (job working directory)
+cat > "${JOBDIR}/connection.yml" << EOF
+---
+host: "${SLURM_NODELIST:-$HOSTNAME}"
+port: ${port}
+EOF
+
+echo "Created connection.yml at ${JOBDIR}/connection.yml:"
+cat "${JOBDIR}/connection.yml"
+
+CHARACTERS_DIR="${HOME}/cloudcix_ai_lab/characters"
+PRESETS_DIR="${HOME}/cloudcix_ai_lab/presets"
+LORAS_DIR="${HOME}/cloudcix_ai_lab/loras"
+CACHE_DIR="${HOME}/cloudcix_ai_lab/cache"
+LOGS_DIR="${HOME}/cloudcix_ai_lab/logs"
+
+mkdir -p "${CHARACTERS_DIR}" "${PRESETS_DIR}" "${LORAS_DIR}" "${CACHE_DIR}" "${LOGS_DIR}"
+
+echo "Characters directory: ${CHARACTERS_DIR}"
+echo "Presets directory: ${PRESETS_DIR}"
+echo "LoRAs directory: ${LORAS_DIR}"
+echo "Cache directory: ${CACHE_DIR}"
+echo "Logs directory: ${LOGS_DIR}"
+
+echo "TIMING - Starting container at: $(date)"
+
+# Enhanced bind paths - map CloudCIX AI Lab directories to expected container paths
+export APPTAINER_BINDPATH="/etc/passwd,/etc/group,/tmp,${PWD},/usr/lib,/usr/bin,/etc/nsswitch.conf"
+echo "APPTAINER_BINDPATH: ${APPTAINER_BINDPATH}"
+
+# GPU enablement if requested
+GPU_FLAG=""
+<% if (defined?(partition_type) && partition_type == 'physical-gpu') || (defined?(num_gpus) && num_gpus.to_i > 0) %>
+GPU_FLAG="--nv"
+<% end %>
+echo "GPU_FLAG: ${GPU_FLAG}"
+
+# Derive Gradio root path for OOD proxying
+ROOT_PATH="/node/${SLURM_NODELIST:-$HOSTNAME}/${port}"
+echo "ROOT_PATH: ${ROOT_PATH}"
+
+set -x
+# Map each directory individually
+${SINGULARITY_BIN} run ${GPU_FLAG} \
+  --bind "${HOME}/cloudcix_ai_lab/models:/opt/app/user_data/models:rw" \
+  --bind "${HOME}/cloudcix_ai_lab/characters:/opt/app/user_data/characters:rw" \
+  --bind "${HOME}/cloudcix_ai_lab/presets:/opt/app/user_data/presets:rw" \
+  --bind "${HOME}/cloudcix_ai_lab/loras:/opt/app/user_data/loras:rw" \
+  --bind "${HOME}/cloudcix_ai_lab/logs:/opt/app/user_data/logs:rw" \
+  --bind "${HOME}/cloudcix_ai_lab/cache:/opt/app/user_data/cache:rw" \
+  --bind "${HOME}/cloudcix_ai_lab/settings:/opt/app/user_data/settings:rw" \
+  --bind "${HOME}/cloudcix_ai_lab/mmproj:/opt/app/user_data/mmproj:rw" \
+  --bind "${HOME}/cloudcix_ai_lab/grammars:/opt/app/user_data/grammars:rw" \
+  --bind "${HOME}/cloudcix_ai_lab/instruction-templates:/opt/app/user_data/instruction-templates:rw" \
+  --bind "${HOME}/cloudcix_ai_lab/extensions:/opt/app/user_data/extensions:rw" \
+  --bind "${HOME}/cloudcix_ai_lab/training:/opt/app/user_data/training:rw" \
+  --bind "/tmp:/tmp:rw" \
+  --env GRADIO_SERVER_NAME=0.0.0.0 \
+  --env GRADIO_SERVER_PORT=${port} \
+  --env GRADIO_ROOT_PATH="${ROOT_PATH}" \
+  "${IMG}" &
+
+SCRIPT_PID=$!
+echo "Launched container pid=${SCRIPT_PID}"
+
+# Brief readiness check to surface progress in logs.
+for i in $(seq 1 60); do
+  if curl -fsS "http://127.0.0.1:${port}${ROOT_PATH}/" >/dev/null 2>&1; then
+    echo "Health: Text Generation WebUI reachable at http://127.0.0.1:${port}${ROOT_PATH}/ (attempt ${i})"
+    break
+  fi
+  sleep 2
+done
+
+wait ${SCRIPT_PID}

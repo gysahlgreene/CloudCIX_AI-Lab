@@ -1,0 +1,54 @@
+---
+# Batch Connect app configuration
+cluster: "boole"
+title: "CloudCIX AI Lab"
+attributes:
+  bc_num_hours:
+    label: "Maximum job duration"
+    value: "1"
+    min: 1
+    max: 24
+    step: 1
+    help: |
+      Maximum wall time in hours the AI Lab session will run.
+      The session will be terminated when this time is exceeded.
+  
+  ec_cpus:
+    label: "Number of CPU cores:"
+    widget: "number_field"
+    value: "4"
+    required: true
+
+  ec_mem:
+    label: "RAM (in GB):"
+    value: "16"
+    widget: "number_field"
+    required: true
+
+  partition_type:
+    widget: "radio"
+    label: "Partition"
+    value: "physical-gpu"
+    help: |
+      Choose the type of compute nodes for your job.
+    options:
+      - ["Physical Compute", "physical"]
+      - ["GPU Compute", "physical-gpu"]
+      - ["Cloud Compute", "cloud"]
+
+  num_gpus:
+    widget: "number_field"
+    label: "GPUs"
+    help: |
+      Number of GPUs to request when using the GPU Compute partition. Ignored for other partitions.
+    min: 0
+    max: 8
+    step: 1
+    value: 1
+
+form:
+  - bc_num_hours
+  - ec_cpus
+  - ec_mem
+  - partition_type
+  - num_gpus

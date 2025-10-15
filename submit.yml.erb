@@ -1,0 +1,13 @@
+---
+batch_connect:
+  template: "basic"
+
+script:
+  native:
+    - "--partition=<%= partition_type %>"
+    - "--cpus-per-task=<%= ec_cpus %>"
+    - "--mem=<%= ec_mem %>G"
+    - "--time=<%= bc_num_hours %>:00:00"
+    <% if partition_type == 'physical-gpu' && num_gpus.to_i > 0 %>
+    - "--gres=gpu:<%= num_gpus %>"
+    <% end %>

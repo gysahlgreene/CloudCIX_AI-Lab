@@ -1,0 +1,93 @@
+Bootstrap: docker
+From: ubuntu:24.04
+
+%labels
+    Author Eóin Mc Dermott
+    Version 1.0
+    Description CloudCIX AI-Lab OpenOnDemand Interactive App
+    SourceCode https://github.com/oobabooga/text-generation-webui
+    License https://github.com/oobabooga/text-generation-webui/blob/main/LICENSE
+
+%environment
+    export PATH=/usr/local/bin:$PATH
+    export GRADIO_SERVER_NAME="${GRADIO_SERVER_NAME:-0.0.0.0}"
+    export GRADIO_SERVER_PORT="${GRADIO_SERVER_PORT:-7860}"
+    export GRADIO_ROOT_PATH="${GRADIO_ROOT_PATH:-/}"
+
+%post
+    set -eux
+    
+    # System dependencies
+    apt-get update && apt-get install -y --no-install-recommends \
+        wget curl ca-certificates git vim \
+        build-essential python3 python3-pip python3-venv \
+        && rm -rf /var/lib/apt/lists/*
+
+    # Create global virtual environment
+    python3 -m venv /opt/textgen-venv
+    . /opt/textgen-venv/bin/activate
+    python -m pip install --upgrade pip setuptools wheel
+    
+    # Clone and install text-generation-webui
+    git clone https://github.com/oobabooga/text-generation-webui.git /tmp/textgen-repo
+    python -m pip install -r /tmp/textgen-repo/requirements/portable/requirements.txt
+    python -m pip install pyyaml requests gradio fastapi uvicorn
+    
+    # Copy application
+    mkdir -p /opt/app
+    cp -r /tmp/textgen-repo/* /opt/app/
+    rm -rf /tmp/textgen-repo
+    
+    # Set permissions
+    chmod -R a+rX /opt/app /opt/textgen-venv
+
+%runscript
+    echo "=== Starting Text Generation WebUI ==="
+    echo "Server name: $GRADIO_SERVER_NAME"
+    echo "Server port: $GRADIO_SERVER_PORT" 
+    echo "Root path: $GRADIO_ROOT_PATH"
+    
+    cd /opt/app || exit 1
+    
+    # Create CloudCIX AI Lab directory structure in user's home directory
+    mkdir -p \
+        "$HOME/cloudcix_ai_lab/cache/gradio" \
+        "$HOME/cloudcix_ai_lab/logs/notebook" \
+        "$HOME/cloudcix_ai_lab/logs/instruct" \
+        "$HOME/cloudcix_ai_lab/logs/chat" \
+        "$HOME/cloudcix_ai_lab/models" \
+        "$HOME/cloudcix_ai_lab/loras" \
+        "$HOME/cloudcix_ai_lab/characters" \
+        "$HOME/cloudcix_ai_lab/presets" \
+        "$HOME/cloudcix_ai_lab/mmproj" \
+        "$HOME/cloudcix_ai_lab/grammars" \
+        "$HOME/cloudcix_ai_lab/instruction-templates" \
+        "$HOME/cloudcix_ai_lab/extensions" \
+        "$HOME/cloudcix_ai_lab/training/datasets" \
+        "$HOME/cloudcix_ai_lab/training/formats" \
+        "$HOME/cloudcix_ai_lab/settings"
+    
+    echo "CloudCIX AI Lab directory structure created at: $HOME/cloudcix_ai_lab"
+    
+    # Create symbolic link so the app finds user_data where it expects
+    mkdir -p user_data
+    ln -sf "$HOME/cloudcix_ai_lab/models" user_data/models
+    ln -sf "$HOME/cloudcix_ai_lab/characters" user_data/characters  
+    ln -sf "$HOME/cloudcix_ai_lab/presets" user_data/presets
+    ln -sf "$HOME/cloudcix_ai_lab/loras" user_data/loras
+    ln -sf "$HOME/cloudcix_ai_lab/logs" user_data/logs
+    ln -sf "$HOME/cloudcix_ai_lab/cache" user_data/cache
+    ln -sf "$HOME/cloudcix_ai_lab/settings" user_data/settings
+    
+    # Activate virtual environment
+    . /opt/textgen-venv/bin/activate
+    
+    # Run server
+    exec python server.py \
+        --portable \
+        --listen \
+        --listen-port "${GRADIO_SERVER_PORT:-7860}" \
+        --listen-host "${GRADIO_SERVER_NAME:-0.0.0.0}" \
+        --subpath "${GRADIO_ROOT_PATH:-/}" \
+        --api \
+        --verbose
